@@ -1,63 +1,84 @@
 #!/usr/bin/env python3
-"""Roast Your Own Agent — make.fun entry.
+"""Roast Your Own Agent — entrypoint.
 
-Writes one roast line (at most 200 characters) to /output/entry.txt.
-Python 3 standard library only. Deterministic: the same line every run.
+Writes the one-line roast to ``/output/entry.txt`` as UTF-8 with no
+trailing newline, after validating the line and verifying the write
+by reading the file back. Deterministic: same output on every run.
+
+Standard library only.
 """
 
 import os
 import sys
 
-LINE = "My agent keeps a lessons file so it never repeats a mistake — it just makes new ones."
+# The entry: exactly one line, 85 characters, 87 bytes in UTF-8
+# (the em dash counts as one character but three bytes).
+ENTRY_LINE = (
+    "My agent keeps a lessons file so it never repeats a mistake "
+    "— it just makes new ones."
+)
+
+OUTPUT_DIR = "/output"
+OUTPUT_PATH = os.path.join(OUTPUT_DIR, "entry.txt")
 
 MAX_CHARS = 200
-# Sanity bound on the encoded size: the judge tie-break prefers smaller
-# text, and the 200-char gate is measured in characters, so a multi-byte
-# line could quietly be much larger on disk than it looks.
 MAX_BYTES = 400
 
 
+def fail(message):
+    """Print an error to stderr and exit with status 1."""
+    print(f"error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
 def validate(line):
-    """Return an error message if the line breaks a competition rule."""
+    """Check the entry line and return it encoded as UTF-8 bytes.
+
+    Rules: non-empty, at most 200 characters, at most 400 bytes,
+    a single line (no CR/LF), and no control characters.
+    """
     if not line:
-        return "entry is empty"
+        fail("entry line is empty")
+
     if len(line) > MAX_CHARS:
-        return "entry is %d chars, over the %d cap" % (len(line), MAX_CHARS)
-    if len(line.encode("utf-8")) > MAX_BYTES:
-        return "entry is %d bytes, over the %d cap" % (
-            len(line.encode("utf-8")),
-            MAX_BYTES,
-        )
+        fail(f"entry line is {len(line)} chars, over the {MAX_CHARS} limit")
+
     if "\n" in line or "\r" in line:
-        return "entry must be a single line"
-    if any(ord(ch) < 0x20 for ch in line):
-        return "entry contains control characters"
-    return None
+        fail("entry line must be a single line (no newline characters)")
+
+    for char in line:
+        if ord(char) < 0x20:
+            fail(f"entry line contains a control character (U+{ord(char):04X})")
+
+    data = line.encode("utf-8")
+
+    if len(data) > MAX_BYTES:
+        fail(f"entry line is {len(data)} bytes, over the {MAX_BYTES} limit")
+
+    return data
 
 
 def main():
-    line = LINE.strip()
-    error = validate(line)
-    if error is not None:
-        print(error, file=sys.stderr)
-        return 1
-    os.makedirs("/output", exist_ok=True)
-    with open("/output/entry.txt", "w", encoding="utf-8") as f:
-        f.write(line)
-    # Read back and verify: the grader requires deterministic,
-    # byte-identical output, so confirm what landed on disk is exactly
-    # the intended line — no added newline, no encoding surprise.
-    with open("/output/entry.txt", "rb") as f:
-        written = f.read()
-    if written != line.encode("utf-8"):
-        print("written entry does not match the intended line", file=sys.stderr)
-        return 1
-    print(
-        "wrote %d chars (%d bytes) to /output/entry.txt"
-        % (len(line), len(written))
-    )
+    """Validate, write, and verify the entry line."""
+    data = validate(ENTRY_LINE)
+
+    # Create /output if it is missing; never delete anything in it.
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    # Write the exact bytes, with no trailing newline.
+    with open(OUTPUT_PATH, "wb") as handle:
+        handle.write(data)
+
+    # Read the file back and verify it matches byte for byte.
+    with open(OUTPUT_PATH, "rb") as handle:
+        written = handle.read()
+
+    if written != data:
+        fail("verification failed: /output/entry.txt does not match the entry line")
+
+    print(f"Wrote {len(ENTRY_LINE)} chars ({len(data)} bytes) to {OUTPUT_PATH}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
