@@ -63,15 +63,20 @@ def main():
     data = validate(ENTRY_LINE)
 
     # Create /output if it is missing; never delete anything in it.
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    # Wrap every filesystem step so an I/O failure (read-only or
+    # missing /output) reports a clear error instead of a traceback.
+    try:
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Write the exact bytes, with no trailing newline.
-    with open(OUTPUT_PATH, "wb") as handle:
-        handle.write(data)
+        # Write the exact bytes, with no trailing newline.
+        with open(OUTPUT_PATH, "wb") as handle:
+            handle.write(data)
 
-    # Read the file back and verify it matches byte for byte.
-    with open(OUTPUT_PATH, "rb") as handle:
-        written = handle.read()
+        # Read the file back and verify it matches byte for byte.
+        with open(OUTPUT_PATH, "rb") as handle:
+            written = handle.read()
+    except OSError as exc:
+        fail(f"cannot write {OUTPUT_PATH}: {exc}")
 
     if written != data:
         fail("verification failed: /output/entry.txt does not match the entry line")
